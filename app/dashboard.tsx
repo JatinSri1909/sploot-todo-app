@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, memo } from 'react';
 import {
   View,
   Text,
@@ -32,6 +32,75 @@ interface TodoFormData {
   completed: boolean;
 }
 
+const TodoFormModal = memo(({ 
+  visible, 
+  onClose, 
+  onSubmit, 
+  title,
+  initialData,
+}: { 
+  visible: boolean; 
+  onClose: () => void; 
+  onSubmit: (data: TodoFormData) => void; 
+  title: string;
+  initialData: TodoFormData;
+}) => {
+  const [localFormData, setLocalFormData] = useState(initialData);
+
+  useEffect(() => {
+    setLocalFormData(initialData);
+  }, [initialData]);
+
+  const handleSubmit = () => {
+    onSubmit(localFormData);
+  };
+
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="slide"
+      onRequestClose={onClose}
+    >
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={styles.modalContainer}
+      >
+        <View style={styles.modalContent}>
+          <Text style={styles.modalTitle}>{title}</Text>
+          <TextInput
+            style={styles.modalInput}
+            placeholder="Todo title"
+            value={localFormData.title}
+            onChangeText={(text) => setLocalFormData({ ...localFormData, title: text })}
+          />
+          <TouchableOpacity
+            style={styles.checkboxContainer}
+            onPress={() => setLocalFormData({ ...localFormData, completed: !localFormData.completed })}
+          >
+            <View style={[styles.checkbox, localFormData.completed && styles.checked]}>
+              {localFormData.completed && <Text style={styles.checkmark}>✓</Text>}
+            </View>
+            <Text style={styles.checkboxLabel}>Completed</Text>
+          </TouchableOpacity>
+          <View style={styles.modalButtons}>
+            <TouchableOpacity style={styles.cancelButton} onPress={onClose}>
+              <Text style={styles.buttonText}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.submitButton, !localFormData.title.trim() && styles.disabledButton]}
+              onPress={handleSubmit}
+              disabled={!localFormData.title.trim()}
+            >
+              <Text style={styles.buttonText}>Save</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
+  );
+});
+
 export default function Dashboard() {
   const dispatch = useDispatch<AppDispatch>();
   const { items, status, searchQuery, filter } = useSelector(
@@ -51,29 +120,35 @@ export default function Dashboard() {
     dispatch(fetchTodos());
   }, [dispatch]);
 
-  const handleAddTodo = () => {
-    if (formData.title.trim()) {
+  const handleAddTodo = (data: TodoFormData) => {
+    if (data.title.trim()) {
       dispatch(
         addTodo({
-          title: formData.title,
-          completed: formData.completed,
+          title: data.title,
+          completed: data.completed,
           userId: 1,
         })
-      );
+      ).then(() => {
+        // Refresh todos after adding
+        dispatch(fetchTodos());
+      });
       setFormData({ title: '', completed: false });
       setIsAddModalVisible(false);
     }
   };
 
-  const handleEditTodo = () => {
-    if (selectedTodo && formData.title.trim()) {
+  const handleEditTodo = (data: TodoFormData) => {
+    if (selectedTodo && data.title.trim()) {
       dispatch(
         updateTodo({
           ...selectedTodo,
-          title: formData.title,
-          completed: formData.completed,
+          title: data.title,
+          completed: data.completed,
         })
-      );
+      ).then(() => {
+        // Refresh todos after editing
+        dispatch(fetchTodos());
+      });
       setSelectedTodo(null);
       setFormData({ title: '', completed: false });
       setIsEditModalVisible(false);
@@ -91,7 +166,12 @@ export default function Dashboard() {
         },
         {
           text: 'Delete',
-          onPress: () => dispatch(deleteTodo(id)),
+          onPress: () => {
+            dispatch(deleteTodo(id)).then(() => {
+              // Refresh todos after deleting
+              dispatch(fetchTodos());
+            });
+          },
           style: 'destructive',
         },
       ]
@@ -121,61 +201,6 @@ export default function Dashboard() {
       if (filter === 'incomplete') return !todo.completed;
       return true;
     });
-
-  const TodoFormModal = ({ 
-    visible, 
-    onClose, 
-    onSubmit, 
-    title 
-  }: { 
-    visible: boolean; 
-    onClose: () => void; 
-    onSubmit: () => void; 
-    title: string;
-  }) => (
-    <Modal
-      visible={visible}
-      transparent
-      animationType="slide"
-      onRequestClose={onClose}
-    >
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={styles.modalContainer}
-      >
-        <View style={styles.modalContent}>
-          <Text style={styles.modalTitle}>{title}</Text>
-          <TextInput
-            style={styles.modalInput}
-            placeholder="Todo title"
-            value={formData.title}
-            onChangeText={(text) => setFormData({ ...formData, title: text })}
-          />
-          <TouchableOpacity
-            style={styles.checkboxContainer}
-            onPress={() => setFormData({ ...formData, completed: !formData.completed })}
-          >
-            <View style={[styles.checkbox, formData.completed && styles.checked]}>
-              {formData.completed && <Text style={styles.checkmark}>✓</Text>}
-            </View>
-            <Text style={styles.checkboxLabel}>Completed</Text>
-          </TouchableOpacity>
-          <View style={styles.modalButtons}>
-            <TouchableOpacity style={styles.cancelButton} onPress={onClose}>
-              <Text style={styles.buttonText}>Cancel</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.submitButton, !formData.title.trim() && styles.disabledButton]}
-              onPress={onSubmit}
-              disabled={!formData.title.trim()}
-            >
-              <Text style={styles.buttonText}>Save</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </KeyboardAvoidingView>
-    </Modal>
-  );
 
   const renderTodoCard = ({ item }: { item: Todo }) => (
     <View style={styles.card}>
@@ -277,16 +302,24 @@ export default function Dashboard() {
 
       <TodoFormModal
         visible={isAddModalVisible}
-        onClose={() => setIsAddModalVisible(false)}
+        onClose={() => {
+          setIsAddModalVisible(false);
+          setFormData({ title: '', completed: false });
+        }}
         onSubmit={handleAddTodo}
         title="Add New Todo"
+        initialData={formData}
       />
 
       <TodoFormModal
         visible={isEditModalVisible}
-        onClose={() => setIsEditModalVisible(false)}
+        onClose={() => {
+          setIsEditModalVisible(false);
+          setFormData({ title: '', completed: false });
+        }}
         onSubmit={handleEditTodo}
         title="Edit Todo"
+        initialData={formData}
       />
     </View>
   );

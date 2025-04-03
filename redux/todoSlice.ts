@@ -1,4 +1,5 @@
 import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export interface Todo {
   id: number;
@@ -23,8 +24,35 @@ const initialState: TodoState = {
   filter: 'all',
 };
 
+// Load todos from AsyncStorage
+const loadTodosFromStorage = async () => {
+  try {
+    const todosString = await AsyncStorage.getItem('todos');
+    return todosString ? JSON.parse(todosString) : [];
+  } catch (error) {
+    console.error('Error loading todos from storage:', error);
+    return [];
+  }
+};
+
+// Save todos to AsyncStorage
+const saveTodosToStorage = async (todos: Todo[]) => {
+  try {
+    await AsyncStorage.setItem('todos', JSON.stringify(todos));
+  } catch (error) {
+    console.error('Error saving todos to storage:', error);
+  }
+};
+
 // Async thunks
 export const fetchTodos = createAsyncThunk('todos/fetchTodos', async () => {
+  // First try to load from storage
+  const storedTodos = await loadTodosFromStorage();
+  if (storedTodos.length > 0) {
+    return storedTodos;
+  }
+
+  // If no stored todos, fetch from API
   const response = await fetch('https://jsonplaceholder.typicode.com/todos');
   const data = await response.json();
   
@@ -44,43 +72,41 @@ export const fetchTodos = createAsyncThunk('todos/fetchTodos', async () => {
       'Deploy to production'
     ][todo.id % 10],
   }));
-  
+
+  // Save fetched todos to storage
+  await saveTodosToStorage(englishTodos);
   return englishTodos;
 });
 
 export const addTodo = createAsyncThunk('todos/addTodo', async (todo: Omit<Todo, 'id'>) => {
-  const response = await fetch('https://jsonplaceholder.typicode.com/todos', {
-    method: 'POST',
-    body: JSON.stringify(todo),
-    headers: {
-      'Content-type': 'application/json; charset=UTF-8',
-    },
-  });
-  const data = await response.json();
-  return data;
+  const storedTodos = await loadTodosFromStorage();
+  const newTodo = {
+    ...todo,
+    id: Date.now(), // Generate unique ID
+  };
+  const updatedTodos = [...storedTodos, newTodo];
+  await saveTodosToStorage(updatedTodos);
+  return newTodo;
 });
 
 export const updateTodo = createAsyncThunk(
   'todos/updateTodo',
   async (todo: Todo) => {
-    const response = await fetch(`https://jsonplaceholder.typicode.com/todos/${todo.id}`, {
-      method: 'PUT',
-      body: JSON.stringify(todo),
-      headers: {
-        'Content-type': 'application/json; charset=UTF-8',
-      },
-    });
-    const data = await response.json();
-    return data;
+    const storedTodos = await loadTodosFromStorage();
+    const updatedTodos = storedTodos.map((t: Todo) =>
+      t.id === todo.id ? todo : t
+    );
+    await saveTodosToStorage(updatedTodos);
+    return todo;
   }
 );
 
 export const deleteTodo = createAsyncThunk(
   'todos/deleteTodo',
   async (id: number) => {
-    await fetch(`https://jsonplaceholder.typicode.com/todos/${id}`, {
-      method: 'DELETE',
-    });
+    const storedTodos = await loadTodosFromStorage();
+    const updatedTodos = storedTodos.filter((todo: Todo) => todo.id !== id);
+    await saveTodosToStorage(updatedTodos);
     return id;
   }
 );
