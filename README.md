@@ -6,11 +6,27 @@ A modern, feature-rich Todo application built with React Native, Expo, TypeScrip
 
 - 🔐 User Authentication (Mock)
 - 📝 CRUD operations for todos
-- 🔍 Search and filter functionality
+- 🔍 Search and filter functionality with debouncing
 - 💾 Persistent storage using AsyncStorage
 - 🎨 Modern, card-based UI design
 - 🔄 State management with Redux Toolkit
 - 📱 Cross-platform (iOS & Android)
+- 🎣 Custom hooks for API calls and debouncing
+
+## Custom Hooks
+
+The application uses several custom hooks to enhance functionality and maintain clean code:
+
+### useDebounce
+- Implements debouncing for search functionality
+- Prevents excessive API calls while typing
+- Customizable delay parameter
+
+### useApi
+- Generic hook for handling API calls
+- Manages loading and error states
+- Provides type-safe response handling
+- Includes success and error callbacks
 
 ## Prerequisites
 

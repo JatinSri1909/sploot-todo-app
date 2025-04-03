@@ -26,6 +26,8 @@ import {
 } from '../redux/todoSlice';
 import { logout } from '../redux/authSlice';
 import { AppDispatch } from '../redux/store';
+import { useDebounce } from '../hooks/useDebounce';
+import { useApi } from '../hooks/useApi';
 
 interface TodoFormData {
   title: string;
@@ -107,6 +109,14 @@ export default function Dashboard() {
     (state: RootState) => state.todos
   );
   
+  // Use debounced search query
+  const debouncedSearchQuery = useDebounce(searchQuery, 300);
+
+  // Use API hook for todo operations
+  const addTodoApi = useApi<Todo>();
+  const updateTodoApi = useApi<Todo>();
+  const deleteTodoApi = useApi<number>();
+  
   // Modal states
   const [isAddModalVisible, setIsAddModalVisible] = useState(false);
   const [isEditModalVisible, setIsEditModalVisible] = useState(false);
@@ -120,42 +130,51 @@ export default function Dashboard() {
     dispatch(fetchTodos());
   }, [dispatch]);
 
-  const handleAddTodo = (data: TodoFormData) => {
+  useEffect(() => {
+    // Update search when debounced value changes
+    dispatch(setSearchQuery(debouncedSearchQuery));
+  }, [debouncedSearchQuery, dispatch]);
+
+  const handleAddTodo = async (data: TodoFormData) => {
     if (data.title.trim()) {
-      dispatch(
-        addTodo({
-          title: data.title,
-          completed: data.completed,
-          userId: 1,
-        })
-      ).then(() => {
-        // Refresh todos after adding
+      try {
+        await dispatch(
+          addTodo({
+            title: data.title,
+            completed: data.completed,
+            userId: 1,
+          })
+        ).unwrap();
         dispatch(fetchTodos());
-      });
-      setFormData({ title: '', completed: false });
-      setIsAddModalVisible(false);
+        setFormData({ title: '', completed: false });
+        setIsAddModalVisible(false);
+      } catch (error) {
+        Alert.alert('Error', 'Failed to add todo. Please try again.');
+      }
     }
   };
 
-  const handleEditTodo = (data: TodoFormData) => {
+  const handleEditTodo = async (data: TodoFormData) => {
     if (selectedTodo && data.title.trim()) {
-      dispatch(
-        updateTodo({
-          ...selectedTodo,
-          title: data.title,
-          completed: data.completed,
-        })
-      ).then(() => {
-        // Refresh todos after editing
+      try {
+        await dispatch(
+          updateTodo({
+            ...selectedTodo,
+            title: data.title,
+            completed: data.completed,
+          })
+        ).unwrap();
         dispatch(fetchTodos());
-      });
-      setSelectedTodo(null);
-      setFormData({ title: '', completed: false });
-      setIsEditModalVisible(false);
+        setSelectedTodo(null);
+        setFormData({ title: '', completed: false });
+        setIsEditModalVisible(false);
+      } catch (error) {
+        Alert.alert('Error', 'Failed to update todo. Please try again.');
+      }
     }
   };
 
-  const handleDeleteTodo = (id: number) => {
+  const handleDeleteTodo = async (id: number) => {
     Alert.alert(
       'Delete Todo',
       'Are you sure you want to delete this todo?',
@@ -166,11 +185,13 @@ export default function Dashboard() {
         },
         {
           text: 'Delete',
-          onPress: () => {
-            dispatch(deleteTodo(id)).then(() => {
-              // Refresh todos after deleting
+          onPress: async () => {
+            try {
+              await dispatch(deleteTodo(id)).unwrap();
               dispatch(fetchTodos());
-            });
+            } catch (error) {
+              Alert.alert('Error', 'Failed to delete todo. Please try again.');
+            }
           },
           style: 'destructive',
         },
@@ -328,7 +349,6 @@ export default function Dashboard() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    padding: 20,
     backgroundColor: '#f5f5f5',
   },
   header: {
@@ -336,6 +356,8 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 20,
+    paddingHorizontal: 20,
+    paddingTop: 20,
   },
   searchInput: {
     flex: 1,
@@ -354,6 +376,7 @@ const styles = StyleSheet.create({
   filterContainer: {
     flexDirection: 'row',
     marginBottom: 20,
+    marginHorizontal: 20,
     backgroundColor: 'white',
     borderRadius: 25,
     padding: 4,
@@ -381,9 +404,11 @@ const styles = StyleSheet.create({
   },
   list: {
     flex: 1,
+    width: '100%',
   },
   listContent: {
-    paddingBottom: 80,
+    paddingHorizontal: 20,
+    paddingBottom: 100,
   },
   card: {
     backgroundColor: 'white',
@@ -395,6 +420,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 3,
+    width: '100%',
   },
   cardHeader: {
     flexDirection: 'row',
