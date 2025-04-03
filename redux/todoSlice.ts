@@ -27,7 +27,25 @@ const initialState: TodoState = {
 export const fetchTodos = createAsyncThunk('todos/fetchTodos', async () => {
   const response = await fetch('https://jsonplaceholder.typicode.com/todos');
   const data = await response.json();
-  return data;
+  
+  // Filter to get only first 10 todos and modify titles to be more meaningful in English
+  const englishTodos = data.slice(0, 10).map((todo: Todo) => ({
+    ...todo,
+    title: [
+      'Complete project documentation',
+      'Review code changes',
+      'Update dependencies',
+      'Write unit tests',
+      'Fix UI bugs',
+      'Implement new feature',
+      'Optimize database queries',
+      'Setup CI/CD pipeline',
+      'Create user documentation',
+      'Deploy to production'
+    ][todo.id % 10],
+  }));
+  
+  return englishTodos;
 });
 
 export const addTodo = createAsyncThunk('todos/addTodo', async (todo: Omit<Todo, 'id'>) => {

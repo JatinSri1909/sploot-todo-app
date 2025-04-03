@@ -7,6 +7,10 @@ import {
   TextInput,
   TouchableOpacity,
   Alert,
+  Modal,
+  ScrollView,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { useDispatch, useSelector } from 'react-redux';
 import { router } from 'expo-router';
@@ -23,37 +27,57 @@ import {
 import { logout } from '../redux/authSlice';
 import { AppDispatch } from '../redux/store';
 
+interface TodoFormData {
+  title: string;
+  completed: boolean;
+}
+
 export default function Dashboard() {
   const dispatch = useDispatch<AppDispatch>();
   const { items, status, searchQuery, filter } = useSelector(
     (state: RootState) => state.todos
   );
-  const [newTodoTitle, setNewTodoTitle] = useState('');
+  
+  // Modal states
+  const [isAddModalVisible, setIsAddModalVisible] = useState(false);
+  const [isEditModalVisible, setIsEditModalVisible] = useState(false);
+  const [selectedTodo, setSelectedTodo] = useState<Todo | null>(null);
+  const [formData, setFormData] = useState<TodoFormData>({
+    title: '',
+    completed: false,
+  });
 
   useEffect(() => {
     dispatch(fetchTodos());
   }, [dispatch]);
 
   const handleAddTodo = () => {
-    if (newTodoTitle.trim()) {
+    if (formData.title.trim()) {
       dispatch(
         addTodo({
-          title: newTodoTitle,
-          completed: false,
+          title: formData.title,
+          completed: formData.completed,
           userId: 1,
         })
       );
-      setNewTodoTitle('');
+      setFormData({ title: '', completed: false });
+      setIsAddModalVisible(false);
     }
   };
 
-  const handleToggleTodo = (todo: Todo) => {
-    dispatch(
-      updateTodo({
-        ...todo,
-        completed: !todo.completed,
-      })
-    );
+  const handleEditTodo = () => {
+    if (selectedTodo && formData.title.trim()) {
+      dispatch(
+        updateTodo({
+          ...selectedTodo,
+          title: formData.title,
+          completed: formData.completed,
+        })
+      );
+      setSelectedTodo(null);
+      setFormData({ title: '', completed: false });
+      setIsEditModalVisible(false);
+    }
   };
 
   const handleDeleteTodo = (id: number) => {
@@ -74,6 +98,15 @@ export default function Dashboard() {
     );
   };
 
+  const openEditModal = (todo: Todo) => {
+    setSelectedTodo(todo);
+    setFormData({
+      title: todo.title,
+      completed: todo.completed,
+    });
+    setIsEditModalVisible(true);
+  };
+
   const handleLogout = () => {
     dispatch(logout());
     router.replace('/');
@@ -89,28 +122,93 @@ export default function Dashboard() {
       return true;
     });
 
-  const renderItem = ({ item }: { item: Todo }) => (
-    <View style={styles.todoItem}>
-      <TouchableOpacity
-        style={styles.todoCheckbox}
-        onPress={() => handleToggleTodo(item)}
+  const TodoFormModal = ({ 
+    visible, 
+    onClose, 
+    onSubmit, 
+    title 
+  }: { 
+    visible: boolean; 
+    onClose: () => void; 
+    onSubmit: () => void; 
+    title: string;
+  }) => (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="slide"
+      onRequestClose={onClose}
+    >
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={styles.modalContainer}
       >
-        <Text>{item.completed ? '✓' : '○'}</Text>
-      </TouchableOpacity>
-      <Text
-        style={[
-          styles.todoTitle,
-          item.completed && styles.completedTodo,
-        ]}
-      >
-        {item.title}
-      </Text>
-      <TouchableOpacity
-        onPress={() => handleDeleteTodo(item.id)}
-        style={styles.deleteButton}
-      >
-        <Text style={styles.deleteButtonText}>Delete</Text>
-      </TouchableOpacity>
+        <View style={styles.modalContent}>
+          <Text style={styles.modalTitle}>{title}</Text>
+          <TextInput
+            style={styles.modalInput}
+            placeholder="Todo title"
+            value={formData.title}
+            onChangeText={(text) => setFormData({ ...formData, title: text })}
+          />
+          <TouchableOpacity
+            style={styles.checkboxContainer}
+            onPress={() => setFormData({ ...formData, completed: !formData.completed })}
+          >
+            <View style={[styles.checkbox, formData.completed && styles.checked]}>
+              {formData.completed && <Text style={styles.checkmark}>✓</Text>}
+            </View>
+            <Text style={styles.checkboxLabel}>Completed</Text>
+          </TouchableOpacity>
+          <View style={styles.modalButtons}>
+            <TouchableOpacity style={styles.cancelButton} onPress={onClose}>
+              <Text style={styles.buttonText}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.submitButton, !formData.title.trim() && styles.disabledButton]}
+              onPress={onSubmit}
+              disabled={!formData.title.trim()}
+            >
+              <Text style={styles.buttonText}>Save</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
+  );
+
+  const renderTodoCard = ({ item }: { item: Todo }) => (
+    <View style={styles.card}>
+      <View style={styles.cardHeader}>
+        <TouchableOpacity
+          style={[styles.checkbox, item.completed && styles.checked]}
+          onPress={() => dispatch(updateTodo({ ...item, completed: !item.completed }))}
+        >
+          {item.completed && <Text style={styles.checkmark}>✓</Text>}
+        </TouchableOpacity>
+        <Text
+          style={[
+            styles.cardTitle,
+            item.completed && styles.completedTodo,
+          ]}
+        >
+          {item.title}
+        </Text>
+      </View>
+      <View style={styles.cardActions}>
+        <TouchableOpacity
+          style={styles.editButton}
+          onPress={() => openEditModal(item)}
+        >
+          <Text style={styles.actionButtonText}>Edit</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.deleteButton}
+          onPress={() => handleDeleteTodo(item.id)}
+        >
+          <Text style={styles.actionButtonText}>Delete</Text>
+        </TouchableOpacity>
+      </View>
     </View>
   );
 
@@ -124,7 +222,7 @@ export default function Dashboard() {
           onChangeText={(text) => dispatch(setSearchQuery(text))}
         />
         <TouchableOpacity onPress={handleLogout} style={styles.logoutButton}>
-          <Text style={styles.logoutButtonText}>Logout</Text>
+          <Text style={styles.buttonText}>Logout</Text>
         </TouchableOpacity>
       </View>
 
@@ -133,7 +231,7 @@ export default function Dashboard() {
           style={[styles.filterButton, filter === 'all' && styles.activeFilter]}
           onPress={() => dispatch(setFilter('all'))}
         >
-          <Text>All</Text>
+          <Text style={filter === 'all' ? styles.activeFilterText : styles.filterText}>All</Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={[
@@ -142,7 +240,7 @@ export default function Dashboard() {
           ]}
           onPress={() => dispatch(setFilter('completed'))}
         >
-          <Text>Completed</Text>
+          <Text style={filter === 'completed' ? styles.activeFilterText : styles.filterText}>Completed</Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={[
@@ -151,22 +249,7 @@ export default function Dashboard() {
           ]}
           onPress={() => dispatch(setFilter('incomplete'))}
         >
-          <Text>Incomplete</Text>
-        </TouchableOpacity>
-      </View>
-
-      <View style={styles.addTodoContainer}>
-        <TextInput
-          style={styles.addTodoInput}
-          placeholder="Add a new todo..."
-          value={newTodoTitle}
-          onChangeText={setNewTodoTitle}
-        />
-        <TouchableOpacity
-          style={styles.addButton}
-          onPress={handleAddTodo}
-        >
-          <Text style={styles.addButtonText}>Add</Text>
+          <Text style={filter === 'incomplete' ? styles.activeFilterText : styles.filterText}>Incomplete</Text>
         </TouchableOpacity>
       </View>
 
@@ -175,11 +258,36 @@ export default function Dashboard() {
       ) : (
         <FlatList
           data={filteredTodos}
-          renderItem={renderItem}
+          renderItem={renderTodoCard}
           keyExtractor={(item) => item.id.toString()}
           style={styles.list}
+          contentContainerStyle={styles.listContent}
         />
       )}
+
+      <TouchableOpacity
+        style={styles.fab}
+        onPress={() => {
+          setFormData({ title: '', completed: false });
+          setIsAddModalVisible(true);
+        }}
+      >
+        <Text style={styles.fabText}>+</Text>
+      </TouchableOpacity>
+
+      <TodoFormModal
+        visible={isAddModalVisible}
+        onClose={() => setIsAddModalVisible(false)}
+        onSubmit={handleAddTodo}
+        title="Add New Todo"
+      />
+
+      <TodoFormModal
+        visible={isEditModalVisible}
+        onClose={() => setIsEditModalVisible(false)}
+        onSubmit={handleEditTodo}
+        title="Edit Todo"
+      />
     </View>
   );
 }
@@ -199,93 +307,213 @@ const styles = StyleSheet.create({
   searchInput: {
     flex: 1,
     backgroundColor: 'white',
-    padding: 10,
-    borderRadius: 8,
+    padding: 12,
+    borderRadius: 25,
     marginRight: 10,
     borderWidth: 1,
     borderColor: '#ddd',
-  },
-  logoutButton: {
-    backgroundColor: '#ff3b30',
-    padding: 10,
-    borderRadius: 8,
-  },
-  logoutButtonText: {
-    color: 'white',
-    fontWeight: 'bold',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
   },
   filterContainer: {
     flexDirection: 'row',
     marginBottom: 20,
-    justifyContent: 'space-between',
+    backgroundColor: 'white',
+    borderRadius: 25,
+    padding: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
   },
   filterButton: {
     flex: 1,
-    padding: 10,
+    padding: 8,
     alignItems: 'center',
-    backgroundColor: 'white',
-    marginHorizontal: 5,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#ddd',
+    borderRadius: 20,
   },
   activeFilter: {
     backgroundColor: '#007AFF',
   },
-  addTodoContainer: {
-    flexDirection: 'row',
-    marginBottom: 20,
+  filterText: {
+    color: '#666',
   },
-  addTodoInput: {
-    flex: 1,
-    backgroundColor: 'white',
-    padding: 10,
-    borderRadius: 8,
-    marginRight: 10,
-    borderWidth: 1,
-    borderColor: '#ddd',
-  },
-  addButton: {
-    backgroundColor: '#34c759',
-    padding: 10,
-    borderRadius: 8,
-    justifyContent: 'center',
-  },
-  addButtonText: {
+  activeFilterText: {
     color: 'white',
     fontWeight: 'bold',
   },
   list: {
     flex: 1,
   },
-  todoItem: {
-    flexDirection: 'row',
+  listContent: {
+    paddingBottom: 80,
+  },
+  card: {
     backgroundColor: 'white',
+    borderRadius: 15,
     padding: 15,
-    borderRadius: 8,
     marginBottom: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  cardHeader: {
+    flexDirection: 'row',
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#ddd',
+    marginBottom: 10,
   },
-  todoCheckbox: {
-    marginRight: 10,
-  },
-  todoTitle: {
+  cardTitle: {
     flex: 1,
+    fontSize: 16,
+    marginLeft: 10,
+  },
+  cardActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    borderTopWidth: 1,
+    borderTopColor: '#f0f0f0',
+    paddingTop: 10,
+  },
+  checkbox: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: '#007AFF',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  checked: {
+    backgroundColor: '#007AFF',
+  },
+  checkmark: {
+    color: 'white',
+    fontSize: 14,
+    fontWeight: 'bold',
   },
   completedTodo: {
     textDecorationLine: 'line-through',
     color: '#666',
   },
+  editButton: {
+    backgroundColor: '#007AFF',
+    paddingHorizontal: 15,
+    paddingVertical: 8,
+    borderRadius: 15,
+    marginRight: 10,
+  },
   deleteButton: {
     backgroundColor: '#ff3b30',
-    padding: 8,
-    borderRadius: 6,
+    paddingHorizontal: 15,
+    paddingVertical: 8,
+    borderRadius: 15,
   },
-  deleteButtonText: {
+  actionButtonText: {
     color: 'white',
-    fontSize: 12,
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  logoutButton: {
+    backgroundColor: '#ff3b30',
+    paddingHorizontal: 15,
+    paddingVertical: 8,
+    borderRadius: 20,
+  },
+  buttonText: {
+    color: 'white',
+    fontWeight: 'bold',
+  },
+  fab: {
+    position: 'absolute',
+    right: 20,
+    bottom: 20,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: '#007AFF',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  fabText: {
+    fontSize: 24,
+    color: 'white',
+    fontWeight: 'bold',
+  },
+  modalContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    padding: 20,
+  },
+  modalContent: {
+    backgroundColor: 'white',
+    borderRadius: 20,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    marginBottom: 20,
+    textAlign: 'center',
+  },
+  modalInput: {
+    backgroundColor: '#f5f5f5',
+    padding: 12,
+    borderRadius: 10,
+    marginBottom: 15,
+    borderWidth: 1,
+    borderColor: '#ddd',
+  },
+  modalButtons: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 20,
+  },
+  submitButton: {
+    backgroundColor: '#007AFF',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 10,
+    flex: 1,
+    marginLeft: 10,
+    alignItems: 'center',
+  },
+  cancelButton: {
+    backgroundColor: '#666',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 10,
+    flex: 1,
+    marginRight: 10,
+    alignItems: 'center',
+  },
+  disabledButton: {
+    opacity: 0.5,
+  },
+  checkboxContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 15,
+  },
+  checkboxLabel: {
+    marginLeft: 10,
+    fontSize: 16,
   },
   statusText: {
     textAlign: 'center',
